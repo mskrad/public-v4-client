@@ -59,41 +59,49 @@ const MultisigLookup: React.FC<MultisigLookupProps> = ({ onUpdate }) => {
           `Scanning signature ${signature.signature} - in progress`,
         ]);
 
-        const tx: VersionedTransactionResponse | null = await connection.getTransaction(
-          signature.signature,
-          {
-            commitment: 'confirmed',
-            maxSupportedTransactionVersion: 0,
-          }
-        );
+        let scanResult = 'done';
+        try {
+          const tx: VersionedTransactionResponse | null = await connection.getTransaction(
+            signature.signature,
+            {
+              commitment: 'confirmed',
+              maxSupportedTransactionVersion: 1,
+            }
+          );
 
-        if (tx) {
-          const result = await processTransaction(tx, connection, programId);
-          if (result) {
-            if (result.decompiled) {
-              for (let i = 0; i < result.decompiled.instructions.length; i++) {
-                let identified = identifyInstructionByDiscriminator(
-                  result.decompiled.instructions[i],
-                  programId
-                );
-                if (identified) {
-                  let msKey =
-                    result.decompiled.instructions[i].keys[
-                      identified.multisigAccountIndex
-                    ].pubkey.toBase58();
-                  setFoundMultisigs((prevState) => {
-                    return prevState.add(msKey);
-                  });
+          if (tx) {
+            const result = await processTransaction(tx, connection, programId);
+            if (result) {
+              if (result.decompiled) {
+                for (let i = 0; i < result.decompiled.instructions.length; i++) {
+                  let identified = identifyInstructionByDiscriminator(
+                    result.decompiled.instructions[i],
+                    programId
+                  );
+                  if (identified) {
+                    let msKey =
+                      result.decompiled.instructions[i].keys[
+                        identified.multisigAccountIndex
+                      ].pubkey.toBase58();
+                    setFoundMultisigs((prevState) => {
+                      return prevState.add(msKey);
+                    });
+                  }
                 }
               }
             }
+          } else {
+            scanResult = 'skipped, transaction not found';
           }
+        } catch (e) {
+          console.error(`Failed to scan signature ${signature.signature}`, e);
+          scanResult = `skipped, ${e instanceof Error ? e.message : String(e)}`;
         }
 
         setStatusMessages((prev) =>
           prev.map((msg) =>
             msg.includes(signature.signature)
-              ? `Scanning signature ${signature.signature} - done`
+              ? `Scanning signature ${signature.signature} - ${scanResult}`
               : msg
           )
         );
